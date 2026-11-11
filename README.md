@@ -1,131 +1,143 @@
-# AI Job Market Compass · Multi-source Job Market Research
+# AI Job Market Compass
 
-AI Job Market Compass searches for AI and software roles in Germany and the Netherlands, compares recurring job requirements with your project evidence, and links each result back to its source. LinkedIn searches remain manual; this app does not scrape LinkedIn.
+An on-demand job search and market research app for AI and software roles across Europe. It combines public job sources, optional API providers, local skill matching, and optional Groq analysis. LinkedIn remains a manual search; this app does not log in to or scrape LinkedIn.
 
 ## Technology
 
-- **Backend:** Node.js 20 using its built-in HTTP server and `fetch`; no npm packages are required.
-- **Frontend:** HTML, CSS, and browser JavaScript. The search profile is saved in the browser's local storage.
-- **AI:** Optional Groq chat completions for job analysis and resume/portfolio extraction. Without a Groq key, job search and local keyword matching still work.
-- **Python:** This repository does not currently use Python. The backend has not been migrated from Node.js.
-- **LangChain / LangGraph:** Not used; the app calls Groq directly through its HTTP API.
+- **Backend:** Python 3.9+ using the standard library (`http.server`, `urllib`, and `ThreadPoolExecutor`). No Python packages are required.
+- **Frontend:** HTML and CSS with browser JavaScript. Profile preferences are saved in browser local storage.
+- **LLM:** Optional Groq chat completions over HTTPS for job analysis and resume/portfolio extraction. The default model is `openai/gpt-oss-120b`.
+- **LangChain and LangGraph:** Not used. The app calls Groq directly, without an agent framework.
+- **Node.js:** Not required. The backend was migrated from Node.js to Python; browser JavaScript remains part of the UI.
 
-## What the app does
+## Features
 
-- Searches supported job sources for Germany and the Netherlands when you click **Find matching jobs**.
-- Compares job titles and descriptions with your roles, skills, and resume/portfolio evidence; shows a fit estimate and recurring market requirements.
-- Filters for visa sponsorship using Arbeitnow's sponsorship option and explicit sponsorship text from other job listings. Listings without an explicit sponsorship statement are excluded when the filter is on.
-- Creates LinkedIn search links for supported Germany/Netherlands locations, filtered to the past 24 hours. You open LinkedIn yourself; the app does not sign in to LinkedIn, fetch its listings, or scrape it.
-- Saves collected job listings locally in `data/job-market.json` for up to 30 days. Resume and portfolio text is sent to Groq only when you choose profile extraction; it is not stored in this job-listings file.
+- Searches job sources when the user clicks **Find matching jobs**.
+- Compares job postings with selected roles, skills, seniority, industry, and resume/portfolio evidence.
+- Shows an estimated fit score, matched skills, recurring requirements, and market insights. Groq ranks up to 15 jobs; local keyword matching covers remaining results and is the fallback when Groq is unavailable.
+- Resume import supports `.txt` and `.md`; portfolio import reads a public webpage. Groq extracts skills and concise evidence for the user to review.
+- The visa-only filter uses Arbeitnow's visa sponsorship option and requires explicit sponsorship wording from other sources.
+- Generates LinkedIn search links for the past 24 hours. Users open LinkedIn themselves; listings are not imported from LinkedIn.
+- Stores collected job listings locally in `data/job-market.json`, retaining listings for up to 30 days.
+- Accepts European country names and a set of common European cities. Enter `Europe` to search the European feed. Unknown or non-European locations are rejected; add the country after a less common city (for example, `York, UK`).
+- Filters provider results against the selected city or country after fetching, so a London search drops results from the Netherlands. `Europe` is the explicit broad-search option.
 
-## Sources
+## Job sources
 
-| Source | Coverage | Credentials | Notes |
+| Source | Coverage | Key | Notes |
 | --- | --- | --- | --- |
-| Arbeitnow | Germany and Netherlands (filtering a Europe-wide feed) | None | Reads up to three pages and filters locally using your role/skill terms. The visa-only option uses its `visa_sponsorship=true` parameter. Keep the required link back to Arbeitnow on displayed listings. Its public endpoint and response fields may change. |
-| Arbeitsagentur | Germany only | None | Uses a community-documented, unofficial endpoint with the public `X-API-Key` value. Search terms include common German role equivalents where available. The service is undocumented for this app and can change or fail. |
-| Jooble | Germany and Netherlands | Optional `JOOBLE_API_KEY` | Skipped if no key is configured. Jooble API keys may be restricted to the country/domain used to obtain them; confirm that your key covers both markets. |
-| Adzuna | Germany and Netherlands | Optional `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` | Skipped if either credential is blank. |
+| Arbeitnow | European listings in its public feed | None | Reads up to three pages and filters role/skill keywords locally. `Europe` searches the feed across identifiable European countries. The visa-only option uses `visa_sponsorship=true`. Coverage and fields depend on the feed; link back to Arbeitnow on listings. |
+| Arbeitsagentur | Germany | None | Runs for German locations, and for Germany when `Europe` is selected. Uses an unofficial, community-documented endpoint. Adds common German role equivalents and fetches details for only a few results. Access or response formats may change. |
+| Jooble | Configured regional markets | Optional country-specific `JOOBLE_API_KEY_<ISO>` values | Jooble keys are tied to country domains. Set `JOOBLE_API_KEY_GB`, `JOOBLE_API_KEY_DE`, and so on for each market you want searched. A single key only covers its registered market. |
+| Adzuna | Selected country; limited market list for `Europe` | Optional `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` | Skipped when either key is absent. For `Europe`, the app queries Adzuna's configured European API markets (Austria, Germany, France, UK, Ireland, Italy, Netherlands, Poland). |
 
-Groq is an optional analysis provider, not a job-listing source. It analyzes up to 15 newest balanced results per search; remaining results use local keyword ranking. This keeps the request smaller for free-tier limits. Without `GROQ_API_KEY`, the app still collects listings, counts requirements, and applies keyword-based ranking.
+Every source is isolated so a provider failure does not stop the other searches. Current results are deduplicated by listing ID and normalized company/title, then selected newest-first in a balanced rotation, up to 60 listings. Europe-wide searches combine up to three Arbeitnow feed pages, configured Adzuna markets, configured Jooble regional markets, and Germany-only Arbeitsagentur results; source coverage is not exhaustive across Europe. Provider warnings are not displayed in the page.
 
-## Setup
+## Run locally
 
-1. Install Node.js 20 or newer.
-2. Create your local environment file from the example:
+1. Install Python 3.9 or newer.
+2. If you are starting from GitHub, clone the repository and enter its folder:
+
+   ```sh
+   git clone https://github.com/rajalakshmisatapathy/ai-job-market-compass.git
+   cd ai-job-market-compass
+   ```
+
+   If you already have the project locally, open Terminal in that project folder instead.
+
+3. Create a local `.env` from the example (do this once):
 
    ```sh
    cp .env.example .env
    ```
 
-   Add whichever credentials you have to `.env`; Arbeitnow and Arbeitsagentur work without signup or card details. Adzuna and Jooble are optional. Groq enables AI analysis and resume/portfolio extraction.
-
-3. Start the app from Terminal in this folder:
+4. Add any optional API keys to `.env`. Arbeitnow and Arbeitsagentur need no key. Groq enables AI analysis and profile extraction; without it, job search and keyword ranking still work. Adzuna and Jooble are optional.
+5. Start the app:
 
    ```sh
-   npm start
+   python3 server.py
    ```
 
-4. Open <http://localhost:3000>, review the role and location filters, and click **Find matching jobs**. To filter Arbeitnow results to visa-sponsored roles, select **Visa sponsorship only**.
+6. Open <http://localhost:3000>.
 
-No npm packages are required. `.env` is excluded by `.gitignore`. Keep keys server-side in `.env` or in your hosting provider's secret settings; never put them in `public/` files or commit them.
+The Python backend has no third-party dependencies, so there is no `pip install` or `npm install` step. Press **Control+C** in Terminal to stop the server.
 
-## Clone the project
+## Configuration
 
-Clone the repository, then follow **Setup** above:
+Copy `.env.example` to `.env` and fill only keys you have:
 
-```sh
-git clone https://github.com/rajalakshmisatapathy/ai-job-market-compass.git
-cd ai-job-market-compass
-cp .env.example .env
-npm start
+```env
+ADZUNA_APP_ID=
+ADZUNA_APP_KEY=
+JOOBLE_API_KEY=
+JOOBLE_COUNTRY=
+JOOBLE_API_KEY_DE=
+JOOBLE_API_KEY_GB=
+JOOBLE_API_KEY_FR=
+JOOBLE_API_KEY_NL=
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
+PORT=3000
 ```
 
-If the repository is private, sign in to GitHub before cloning. Each person should keep their own API credentials in their local `.env`; `.env` and `data/` are excluded from Git.
+Keep keys in the backend `.env` or your hosting provider's secret settings. Never put keys in `public/` or commit `.env`. The repository ignores `.env` and the local `data/` folder.
 
-## Test each source separately
+## API routes
 
-Start the app with `npm start` in one Terminal window. In another Terminal window, use one of these requests; each returns JSON with `jobs` and `warnings`. The optional `sources` field limits that request to one provider. Normal searches omit it and use all providers.
+The browser uses these same-origin routes served by `server.py`:
+
+- `GET /api/config` — reports which optional providers are configured.
+- `GET /api/dashboard` — loads locally saved results and market insights.
+- `POST /api/search` — searches configured sources and ranks results. Request JSON includes roles and locations; optional fields include skills, seniority, industries, project evidence, and `visaOnly`.
+- `POST /api/profile/import` — extracts skills and experience evidence from resume text or a public portfolio URL.
+- `POST /api/clear` — clears the saved local job corpus.
+
+## Check a provider individually
+
+Start the app with `python3 server.py`, then run a request in another Terminal window. The `sources` field restricts a request to the named provider.
 
 ```sh
-# Arbeitnow (no key)
-curl -sS -X POST http://localhost:3000/api/search -H 'content-type: application/json' --data '{"roles":["AI Engineer"],"skills":["Python","machine learning"],"locations":["Netherlands"],"sources":["Arbeitnow"]}'
+# Arbeitnow across identifiable European feed listings (no key)
+curl -sS -X POST http://localhost:3000/api/search -H 'content-type: application/json' --data '{"roles":["AI Engineer"],"skills":["Python","machine learning"],"locations":["Europe"],"sources":["Arbeitnow"]}'
 
 # Arbeitsagentur (Germany only, no key)
 curl -sS -X POST http://localhost:3000/api/search -H 'content-type: application/json' --data '{"roles":["AI Engineer"],"skills":["Python"],"locations":["Berlin"],"sources":["Arbeitsagentur"]}'
 
-# Jooble (requires JOOBLE_API_KEY in .env)
+# Jooble (requires a key for the regional market being searched)
 curl -sS -X POST http://localhost:3000/api/search -H 'content-type: application/json' --data '{"roles":["AI Engineer"],"skills":["Python"],"locations":["Netherlands"],"sources":["Jooble"]}'
 
-# Adzuna (requires both Adzuna values in .env)
-curl -sS -X POST http://localhost:3000/api/search -H 'content-type: application/json' --data '{"roles":["AI Engineer"],"skills":["Python"],"locations":["Berlin"],"sources":["Adzuna"]}'
+# Adzuna in selected European API markets (requires both Adzuna keys)
+curl -sS -X POST http://localhost:3000/api/search -H 'content-type: application/json' --data '{"roles":["AI Engineer"],"skills":["Python"],"locations":["Europe"],"sources":["Adzuna"]}'
 ```
 
-For the Arbeitnow visa filter, repeat its request with `,"visaOnly":true` inside the JSON object. A warning that a source was skipped because its key is absent is expected for Jooble and Adzuna. Arbeitnow logs one raw sample job to the app's Terminal on its first successful call so its upstream fields can be inspected.
+For an Arbeitnow visa-only search, add `,"visaOnly":true` to its JSON body.
 
-## Results and limitations
+## AI, data, and limits
 
-- Every provider is called independently. Missing optional keys or provider outages do not prevent other sources from returning results; provider warning details remain server-side and are not shown in the page.
-- Current results are de-duplicated by source ID and normalized company/title, then selected newest-first in a balanced rotation across sources, up to 60 listings.
-- Job-board searches and LinkedIn links are limited to Germany and the Netherlands. Unrecognized locations are rejected with a coverage message instead of being treated as Germany.
-- Arbeitsagentur queries use German equivalents such as `KI Entwickler` and `Softwareentwickler` when available. Search relevance can vary because terms are translated approximately.
-- The visa-only checkbox uses Arbeitnow's sponsorship filter and keeps results from other sources only when their listing explicitly indicates sponsorship; listings without an explicit statement are excluded.
-- Arbeitnow asks API users to link back to its site; the source badge links to Arbeitnow. Its endpoint is public but should be treated as undocumented and subject to change.
-- Arbeitsagentur's job search endpoint used here is unofficial/community-documented. Its schema, availability, or access behavior may change. Detail requests are limited to a few results per search to keep requests bounded.
-- Jooble key coverage may be country/domain-specific. If it returns an access error, check whether your key is authorized for Germany and the Netherlands; remove the key from `.env` to skip it.
-- Adzuna remains optional. Check its current [API terms](https://developer.adzuna.com/docs/terms_of_service) before publishing or using the data beyond personal job search.
-- Groq receives your search preferences, project evidence, and selected job description excerpts when enabled. Keep sensitive personal data out of the profile.
-- Listings are stored locally in `data/job-market.json` for up to 30 days. Use **Clear collected data** to remove the saved corpus.
+- Without `GROQ_API_KEY`, searches use local keyword matching and market aggregation. Groq is optional.
+- When Groq is configured, search preferences, project evidence, and selected job-description excerpts are sent to Groq for analysis. Resume/portfolio text is sent when the user chooses **Extract profile skills & evidence**. Avoid sending material you do not want processed by the provider.
+- A fit percentage is a text-based estimate, not a hiring probability. Review the listing and extracted evidence yourself.
+- The sponsorship filter is conservative: for sources other than Arbeitnow, a listing must explicitly say sponsorship is available. Missing information is treated as no confirmed sponsorship.
+- LinkedIn links use the title/location fields and a 24-hour filter. LinkedIn may broaden its own results; this app does not retrieve them.
+- Europe-wide results depend on each provider's own feed and country coverage. Arbeitnow does not return every European vacancy; Adzuna's Europe mode queries only its configured country endpoints; Arbeitsagentur covers Germany; and each Jooble key is regional.
+- Job sources can return stale, incomplete, or changed data. Arbeitsagentur's endpoint is unofficial; Arbeitnow's endpoint is public but its schema may change.
+- Job-market results are saved locally in `data/job-market.json` for up to 30 days. Use **Clear collected data** to erase them.
 
-## Using the app
+## Optional API keys
 
-1. In **Search jobs**, enter job titles and locations, then click **Find matching jobs**.
-2. Expand **Skills and filters** to edit skills, seniority, industry, or visa sponsorship.
-3. Expand **Add resume or portfolio** to import a text resume or public portfolio, or enter project evidence yourself. Review imported skills and evidence before searching.
-4. Open **Market insights** to see recurring requirements and how often your evidence mentions them. **Mentioned** means the skill text was found in your saved evidence; **Not shown** means it was not found. Neither label verifies your proficiency.
-5. Each result's fit percentage is an estimate based on profile/job text overlap and, when configured, Groq's analysis. It is not a hiring probability. LinkedIn links are separate manual searches filtered to the past 24 hours.
+- Adzuna: <https://developer.adzuna.com/> — App ID and App Key.
+- Jooble: <https://jooble.org/api/about> — obtain a key on each regional Jooble domain you want to query, then set the corresponding `JOOBLE_API_KEY_<ISO>` variable. For one key, set `JOOBLE_COUNTRY` to its ISO country code and put the key in `JOOBLE_API_KEY`.
+- Groq: <https://console.groq.com/keys>.
 
-## Obtaining optional keys
-
-- Adzuna: register an app at <https://developer.adzuna.com/> to receive an App ID and App Key.
-- Jooble: request an API key through the regional Jooble API portal, for example <https://jooble.org/api/about>. Check Jooble's [REST API instructions](https://jooblehelpcenter.freshdesk.com/en/support/solutions/articles/60001448238-rest-api-documentation) for regional key restrictions.
-- Groq: create an API key at <https://console.groq.com/keys>.
-
-## Resume and portfolio evidence
-
-In **Add resume or portfolio**, choose a `.txt` or `.md` resume, or enter a public portfolio website URL, then select **Extract profile skills & evidence**. The app extracts skills into the skills field and project/experience examples into the editable evidence box; review both before searching. These profile details contribute to the fit score and evidence explanation. PDF and DOCX uploads are not supported. This import sends the resume or fetched portfolio text to Groq, so only use material you are comfortable sharing with that provider. A `GROQ_API_KEY` is required for extraction; without it, enter evidence manually.
-
-## Project layout
+## Repository contents
 
 ```text
 ai-job-market-compass/
-├── .env                    # local secrets; create from .env.example, never commit
 ├── .env.example
 ├── .gitignore
-├── package.json
 ├── README.md
-├── server.js
-├── data/                  # created at runtime; excluded from Git
+├── server.py
+├── data/              # created locally; excluded from Git
 └── public/
     ├── app.js
     └── index.html
