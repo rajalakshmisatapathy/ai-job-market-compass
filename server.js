@@ -71,7 +71,7 @@ async function searchAdzuna(role, skills, area) {
   url.searchParams.set('sort_by', 'date');
   url.searchParams.set('content-type', 'application/json');
   if (area.where) url.searchParams.set('where', area.where);
-  const response = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { 'user-agent': 'NorthstarJobResearch/1.0' } });
+  const response = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { 'user-agent': 'AIJobMarketCompass/1.0' } });
   if (!response.ok) throw new Error(`Adzuna returned ${response.status} for ${area.label}.`);
   const data = await response.json();
   return (data.results || []).map(job => normalizeJob(job, area.country, area.label)).filter(job => job.url);
@@ -138,7 +138,7 @@ async function searchArbeitnow(profile, locations, visaOnly) {
     if (visaOnly) url.searchParams.set('visa_sponsorship', 'true');
     let data;
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'user-agent': 'NorthstarJobResearch/1.0' } });
+      const response = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'user-agent': 'AIJobMarketCompass/1.0' } });
       if (!response.ok) throw new Error(`Arbeitnow returned ${response.status} on page ${page}.`);
       data = await response.json();
     } catch (error) { warnings.push(`Arbeitnow page ${page} failed: ${error.message}`); break; }
@@ -178,7 +178,7 @@ async function searchArbeitsagentur(profile, locations) {
     url.searchParams.set('was', [role, germanRole(role)].filter(Boolean).join(' '));
     url.searchParams.set('wo', area.where || area.label);
     url.searchParams.set('page', '1'); url.searchParams.set('size', '25');
-    const response = await fetch(url, { headers: { 'X-API-Key': 'jobboerse-jobsuche', 'user-agent': 'NorthstarJobResearch/1.0' }, signal: AbortSignal.timeout(15000) });
+    const response = await fetch(url, { headers: { 'X-API-Key': 'jobboerse-jobsuche', 'user-agent': 'AIJobMarketCompass/1.0' }, signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`Arbeitsagentur returned ${response.status} for ${area.label}.`);
     return { area, rows: arbeitsagenturRows(await response.json()) };
   }));
@@ -190,7 +190,7 @@ async function searchArbeitsagentur(profile, locations) {
     let detail = job;
     if (ref) {
       const encoded = encodeURIComponent(Buffer.from(String(ref)).toString('base64'));
-      const response = await fetch(`https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobdetails/${encoded}`, { headers: { 'X-API-Key': 'jobboerse-jobsuche', 'user-agent': 'NorthstarJobResearch/1.0' }, signal: AbortSignal.timeout(12000) });
+      const response = await fetch(`https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobdetails/${encoded}`, { headers: { 'X-API-Key': 'jobboerse-jobsuche', 'user-agent': 'AIJobMarketCompass/1.0' }, signal: AbortSignal.timeout(12000) });
       if (response.ok) detail = { ...job, ...(await response.json()) };
       else failures.push(`Arbeitsagentur detail lookup returned ${response.status} for a result.`);
     }
@@ -210,7 +210,7 @@ async function searchJooble(profile, locations) {
   if (!areas.length) return { jobs, warning: 'Jooble skipped: no Germany or Netherlands locations are selected.' };
   const keywords = [...profile.roles, ...profile.skills].join(', ');
   const results = await Promise.allSettled(areas.map(async area => {
-    const response = await fetch(`https://jooble.org/api/${encodeURIComponent(process.env.JOOBLE_API_KEY)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'NorthstarJobResearch/1.0' }, body: JSON.stringify({ keywords, location: area.label }), signal: AbortSignal.timeout(15000) });
+    const response = await fetch(`https://jooble.org/api/${encodeURIComponent(process.env.JOOBLE_API_KEY)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'AIJobMarketCompass/1.0' }, body: JSON.stringify({ keywords, location: area.label }), signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`Jooble returned ${response.status} for ${area.label}.`);
     const data = await response.json();
     return (data.jobs || []).map(raw => normalizedExternalJob({ id: raw.id || raw.link, title: raw.title, company: raw.company, location: raw.location || area.label, country: area.country.toUpperCase(), description: raw.snippet || raw.description, url: raw.link, created: raw.updated || null, source: 'Jooble' })).filter(job => job.url);
@@ -356,7 +356,7 @@ async function importPortfolioText(value) {
   let target = value;
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!isPublicImportUrl(target)) throw new Error('Use a public http or https portfolio URL.');
-    const response = await fetch(target, { redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'user-agent': 'NorthstarPortfolioImporter/1.0', accept: 'text/html,text/plain' } });
+    const response = await fetch(target, { redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'user-agent': 'AIJobMarketCompassPortfolioImporter/1.0', accept: 'text/html,text/plain' } });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       if (redirects === 3) throw new Error('The portfolio URL redirected too many times.');
       target = new URL(response.headers.get('location') || '', target).href;
@@ -515,4 +515,4 @@ const server = http.createServer(async (req, res) => {
     res.end(buffer);
   });
 });
-server.listen(PORT, () => console.log(`Northstar job research ready at http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`AI Job Market Compass ready at http://localhost:${PORT}`));

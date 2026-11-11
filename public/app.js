@@ -1,16 +1,18 @@
 const $ = id => document.getElementById(id);
 const fields = ['roles','skills','seniority','industries','locations','projectEvidence','portfolioUrl','visaOnly'];
+const profileStorageKey = 'ai-job-market-compass-profile';
 let latestInsights = null;
 try {
-  const saved = JSON.parse(localStorage.getItem('northstar-profile') || 'null');
+  const saved = JSON.parse(localStorage.getItem(profileStorageKey) || localStorage.getItem('northstar-profile') || 'null');
   if (saved) fields.forEach(id => {
     if (id === 'visaOnly') $(id).checked = Boolean(saved[id]);
     else if (typeof saved[id] === 'string') $(id).value = saved[id];
   });
+  if (saved) { saveProfile(); localStorage.removeItem('northstar-profile'); }
 } catch {}
 if($('projectEvidence').value.trim()||$('portfolioUrl').value.trim())$('backgroundDetails').open=true;
 fields.forEach(id => $(id).addEventListener(id === 'visaOnly' ? 'change' : 'input', () => { saveProfile(); if (latestInsights) renderEvidence(latestInsights); renderLinkedInSearches(); }));
-function saveProfile() { localStorage.setItem('northstar-profile', JSON.stringify(Object.fromEntries(fields.map(id => [id, id === 'visaOnly' ? $(id).checked : $(id).value])))); }
+function saveProfile() { localStorage.setItem(profileStorageKey, JSON.stringify(Object.fromEntries(fields.map(id => [id, id === 'visaOnly' ? $(id).checked : $(id).value])))); }
 function splitLines(value) { return value.split(/\r?\n/).map(x => x.trim()).filter(Boolean); }
 function splitComma(value) { return value.split(',').map(x => x.trim()).filter(Boolean); }
 const supportedLocations = ['berlin','munich','münchen','hamburg','frankfurt','cologne','köln','stuttgart','düsseldorf','dortmund','essen','leipzig','bremen','dresden','hannover','nuremberg','nürnberg','bonn','heidelberg','karlsruhe','freiburg','amsterdam','rotterdam','utrecht','eindhoven','the hague','den haag','groningen','maastricht','leiden','tilburg','almere','breda','nijmegen','enschede','haarlem','arnhem'];

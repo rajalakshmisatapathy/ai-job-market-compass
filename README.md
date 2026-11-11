@@ -1,6 +1,22 @@
-# Northstar · Multi-source Job Market Research
+# AI Job Market Compass · Multi-source Job Market Research
 
-Northstar searches for AI and software roles in Germany and the Netherlands, compares recurring job requirements with your project evidence, and links each result back to its source. LinkedIn searches remain manual; this app does not scrape LinkedIn.
+AI Job Market Compass searches for AI and software roles in Germany and the Netherlands, compares recurring job requirements with your project evidence, and links each result back to its source. LinkedIn searches remain manual; this app does not scrape LinkedIn.
+
+## Technology
+
+- **Backend:** Node.js 20 using its built-in HTTP server and `fetch`; no npm packages are required.
+- **Frontend:** HTML, CSS, and browser JavaScript. The search profile is saved in the browser's local storage.
+- **AI:** Optional Groq chat completions for job analysis and resume/portfolio extraction. Without a Groq key, job search and local keyword matching still work.
+- **Python:** This repository does not currently use Python. The backend has not been migrated from Node.js.
+- **LangChain / LangGraph:** Not used; the app calls Groq directly through its HTTP API.
+
+## What the app does
+
+- Searches supported job sources for Germany and the Netherlands when you click **Find matching jobs**.
+- Compares job titles and descriptions with your roles, skills, and resume/portfolio evidence; shows a fit estimate and recurring market requirements.
+- Filters for visa sponsorship using Arbeitnow's sponsorship option and explicit sponsorship text from other job listings. Listings without an explicit sponsorship statement are excluded when the filter is on.
+- Creates LinkedIn search links for supported Germany/Netherlands locations, filtered to the past 24 hours. You open LinkedIn yourself; the app does not sign in to LinkedIn, fetch its listings, or scrape it.
+- Saves collected job listings locally in `data/job-market.json` for up to 30 days. Resume and portfolio text is sent to Groq only when you choose profile extraction; it is not stored in this job-listings file.
 
 ## Sources
 
@@ -34,19 +50,18 @@ Groq is an optional analysis provider, not a job-listing source. It analyzes up 
 
 No npm packages are required. `.env` is excluded by `.gitignore`. Keep keys server-side in `.env` or in your hosting provider's secret settings; never put them in `public/` files or commit them.
 
-## Publish to GitHub
+## Clone the project
 
-Create an empty repository on GitHub (do not add a README, license, or `.gitignore` there), then, from this project folder, connect it and push:
+Clone the repository, then follow **Setup** above:
 
 ```sh
-git init -b main
-git add .gitignore .env.example README.md package.json server.js public
-git commit -m "Initial job search app"
-git remote add origin https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git
-git push -u origin main
+git clone https://github.com/rajalakshmisatapathy/ai-job-market-compass.git
+cd ai-job-market-compass
+cp .env.example .env
+npm start
 ```
 
-Replace the remote URL with the one GitHub shows for your repository. Do not add `.env` or `data/`; both are ignored. A clone can then follow **Setup** above to create their own `.env` and start the app with `npm start`.
+If the repository is private, sign in to GitHub before cloning. Each person should keep their own API credentials in their local `.env`; `.env` and `data/` are excluded from Git.
 
 ## Test each source separately
 
@@ -103,7 +118,7 @@ In **Add resume or portfolio**, choose a `.txt` or `.md` resume, or enter a publ
 ## Project layout
 
 ```text
-job-match-agent/
+ai-job-market-compass/
 ├── .env                    # local secrets; create from .env.example, never commit
 ├── .env.example
 ├── .gitignore
