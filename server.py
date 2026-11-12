@@ -5,6 +5,7 @@ import json
 import os
 import re
 import socket
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -370,6 +371,14 @@ def local_rank(job, profile):
     reason = ("Your profile matches " + ", ".join(matches[:5]) + (", supported by your project evidence in " + ", ".join(evidence[:3]) if evidence else "") + ".") if matches else "Few listed skills overlap with your profile evidence; review the requirements and role fit."
     return {"score": score, "reason": reason, "skillsMatched": matches[:8], "concerns": [], "mustHave": [], "niceToHave": [], "languages": [], "workAuthorization": "", "seniority": "", "evidenceMatches": evidence[:8], "matchMode": "keyword"}
 
+def match_score(job):
+    try: score = float(str(job.get("score", 0)).rstrip("%"))
+    except (TypeError, ValueError): score = 0
+    return max(0, min(100, score))
+
+def sort_jobs_by_match(jobs):
+    return sorted(jobs, key=lambda job: (match_score(job), str(job.get("created") or "")), reverse=True)
+
 def requirement_names(jobs):
     rows = []
     for name, aliases in SKILL_GROUPS:
@@ -447,11 +456,11 @@ def groq_json(messages, max_tokens):
         details = exc.read(300).decode("utf-8", "replace")
         raise RuntimeError("Groq returned {}: {}".format(exc.code, details))
 
-def rank_and_analyze(jobs, profile, trends):
+def rank_and_analyze(jobs, profile, trends, description_limit=220):
     preferences = {"roles": profile["roles"][:5], "skills": profile["skills"][:10], "seniority": profile["seniority"],
                    "industries": profile["industries"][:5], "projectEvidence": [item[:160] for item in profile["projectEvidence"][:5]]}
     prompt = {"preferences": preferences, "frequentRequirements": [{"name": row["name"], "count": row["count"]} for row in trends[:8]],
-              "jobs": [{"id": job["id"], "title": job["title"], "company": job["company"], "location": job["location"], "country": job["country"], "description": job.get("description", "")[:220]} for job in jobs]}
+              "jobs": [{"id": job["id"], "title": job["title"], "company": job["company"], "location": job["location"], "country": job["country"], "description": job.get("description", "")[:description_limit]} for job in jobs]}
     system = 'Analyze the supplied job sample. Use only supplied facts. Do not invent qualifications or company facts. Return JSON shaped as {"marketBrief":"2 concise sentences","rankings":[{"id":"...","score":0,"reason":"short explanation","skillsMatched":[],"concerns":[],"mustHave":[],"niceToHave":[],"languages":[],"workAuthorization":"","seniority":""}]}. Include each supplied job id once. Keep fields brief; use empty values when unknown.'
     parsed = groq_json([{"role": "system", "content": system}, {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}], 3200)
     return {item["id"]: item for item in parsed.get("rankings", []) if item.get("id")}, clean(parsed.get("marketBrief"), 1000)
@@ -572,12 +581,61 @@ class CompassHandler(BaseHTTPRequestHandler):
             if path == "/api/clear":
                 empty = {"jobs": [], "lastSearchAt": None, "lastMarketBrief": "", "lastSearchCount": 0}
                 write_store(empty); self.send_json(200, dashboard_payload(empty)); return
+            if path == "/api/score":
+                self.handle_score(data); return
             if path == "/api/search":
                 self.handle_search(data); return
             self.send_json(404, {"error": "Not found."})
         except ValueError as exc: self.send_json(400, {"error": str(exc)})
         except Exception as exc:
             self.send_json(500, {"error": str(exc) or "Request failed."})
+
+    def handle_score(self, data):
+        raw_text = data.get("text")
+        if not isinstance(raw_text, str):
+            self.send_json(400, {"error": "Paste the job description as text."}); return
+        text = raw_text.strip()
+        if not text:
+            self.send_json(400, {"error": "Paste a job description or LinkedIn alert first."}); return
+        if len(text) > 8000:
+            self.send_json(400, {"error": "Keep pasted job text under 8,000 characters."}); return
+        raw_url = data.get("url", "")
+        if raw_url and not isinstance(raw_url, str):
+            self.send_json(400, {"error": "The job URL must be a web address."}); return
+        url = clean(raw_url, 2000)
+        if url and not safe_url(url):
+            self.send_json(400, {"error": "Use a valid http or https job URL."}); return
+        profile = profile_from(data)
+        first_line = next((strip_html(line) for line in text.splitlines() if strip_html(line)), "Pasted job description")
+        location = "Not specified"
+        if isinstance(data.get("locations"), list) and data["locations"]:
+            location = clean(data["locations"][0], 100)
+        country = country_for_text(location) or "EU"
+        job = {"id": "pasted-" + uuid.uuid4().hex, "title": clean(first_line, 240), "company": "Pasted job listing",
+               "location": location, "country": country, "description": text, "url": url,
+               "created": datetime.now(timezone.utc).isoformat(), "salaryMin": None, "salaryMax": None,
+               "salaryCurrency": COUNTRY_CURRENCIES.get(country, "EUR"), "source": "Pasted"}
+        ai = None
+        if os.getenv("GROQ_API_KEY"):
+            try:
+                rankings, _brief = rank_and_analyze([job], profile, [], description_limit=8000)
+                ai = rankings.get(job["id"])
+            except Exception:
+                ai = None
+        keyword = local_rank(job, profile)
+        result = dict(job, **keyword)
+        if ai:
+            try: ai_score = float(ai.get("score") or 0)
+            except (TypeError, ValueError): ai_score = 0
+            ai_skills = ai.get("skillsMatched") if isinstance(ai.get("skillsMatched"), list) else []
+            ai_concerns = ai.get("concerns") if isinstance(ai.get("concerns"), list) else []
+            result.update({"score": max(0, min(100, round(ai_score * 0.55 + keyword["score"] * 0.45))),
+                "reason": clean(ai.get("reason") or keyword["reason"], 500),
+                "skillsMatched": list(dict.fromkeys([clean(item, 80) for item in ai_skills + keyword["skillsMatched"] if clean(item, 80)]))[:8],
+                "concerns": [clean(item, 180) for item in ai_concerns[:5] if clean(item, 180)], "matchMode": "groq"})
+        else:
+            result["matchMode"] = "keyword"
+        self.send_json(200, {"job": result})
 
     def handle_search(self, data):
         profile = profile_from(data)
@@ -657,7 +715,7 @@ class CompassHandler(BaseHTTPRequestHandler):
         store["jobs"] = sorted(dedupe_jobs(list(merged.values())), key=lambda job: str(job.get("lastSeenAt") or job.get("created") or ""), reverse=True)[:1000]
         store["lastMarketBrief"] = brief
         write_store(store)
-        analyzed.sort(key=lambda job: str(job.get("created") or ""), reverse=True)
+        analyzed = sort_jobs_by_match(analyzed)
         response = dashboard_payload(store, analyzed)
         response["matchMode"] = "groq" if rankings else "keyword"
         response["warnings"] = []
